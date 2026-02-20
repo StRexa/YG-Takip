@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YG TAKİP</title>
+
+<link rel="apple-touch-icon" href="logo.png">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body{
+font-family: Arial;
+background:#0f172a;
+color:white;
+margin:0;
+padding:15px;
+}
+
+h1{ text-align:center; }
+
+.kart{
+background:#1e293b;
+padding:18px;
+border-radius:18px;
+margin-bottom:18px;
+}
+
+input,select,button{
+padding:12px;
+border-radius:12px;
+border:none;
+margin:6px 0;
+width:100%;
+font-size:16px;
+}
+
+button{
+background:#22c55e;
+color:white;
+font-weight:bold;
+}
+
+.islem{
+background:#111827;
+padding:12px;
+border-radius:12px;
+margin:8px 0;
+display:flex;
+justify-content:space-between;
+align-items:center;
+}
+
+canvas{
+background:#020617;
+border-radius:18px;
+padding:10px;
+}
+</style>
+
+</head>
+
+<body>
+
+<h1>YG TAKİP</h1>
+
+<div class="kart">
+<h2>💰 Güncel Bakiye</h2>
+<div id="bakiyeYazi" style="font-size:32px;font-weight:bold">0 ₺</div>
+<input id="ilkBakiye" type="number" placeholder="Başlangıç bakiyeni gir">
+<button onclick="bakiyeKaydet()">Kaydet</button>
+</div>
+
+<div class="kart">
+<h2>İşlem Ekle</h2>
+
+<input id="aciklama" placeholder="Açıklama">
+<input id="tutar" type="number" placeholder="Tutar">
+
+<select id="tip">
+<option value="gider">Gider</option>
+<option value="gelir">Gelir</option>
+</select>
+
+<select id="kategori">
+<option>Eğlence</option>
+<option>İş Bankası kredi kartı</option>
+<option>41AZV920 Benzin</option>
+<option>41AZV920 Gaz</option>
+<option>Market</option>
+<option>Genel</option>
+<option>Yemek</option>
+</select>
+
+<button onclick="islemEkle()">Kaydet</button>
+
+</div>
+
+<div class="kart">
+<h2>📊 Gelir / Gider Karşılaştırma</h2>
+<canvas id="gelirGider"></canvas>
+</div>
+
+<div class="kart">
+<h2>📈 Aylık Değişim</h2>
+<canvas id="aylikGrafik"></canvas>
+</div>
+
+<div class="kart">
+<h2>📜 İşlem Geçmişi</h2>
+<div id="liste"></div>
+</div>
+
+<script>
+
+// VERİLER
+let bakiye = Number(localStorage.getItem("yg_bakiye")) || 0;
+let islemler = JSON.parse(localStorage.getItem("yg_islemler")) || [];
+
+// grafik değişkenleri (KRİTİK)
+let ggChart=null;
+let ayChart=null;
+
+// RENKLER
+const renkler={
+"Eğlence":"green",
+"İş Bankası kredi kartı":"red",
+"41AZV920 Benzin":"blue",
+"41AZV920 Gaz":"blue",
+"Market":"white",
+"Genel":"yellow",
+"Yemek":"orange"
+};
+
+// BAKİYE
+function bakiyeGoster(){
+document.getElementById("bakiyeYazi").innerText=bakiye.toLocaleString()+" ₺";
+}
+
+function bakiyeKaydet(){
+let girilen=Number(document.getElementById("ilkBakiye").value);
+if(!girilen) return alert("Bakiye gir");
+bakiye=girilen;
+localStorage.setItem("yg_bakiye",bakiye);
+bakiyeGoster();
+}
+
+// BAKİYE GÜNCELLE
+function bakiyeyiGuncelle(tutar,tip){
+if(tip=="gelir") bakiye+=tutar;
+else bakiye-=tutar;
+localStorage.setItem("yg_bakiye",bakiye);
+bakiyeGoster();
+}
+
+// İŞLEM EKLE
+function islemEkle(){
+
+let aciklama=document.getElementById("aciklama").value;
+let tutar=Number(document.getElementById("tutar").value);
+let tip=document.getElementById("tip").value;
+let kategori=document.getElementById("kategori").value;
+let tarih=new Date().toLocaleDateString();
+
+if(!tutar) return alert("Tutar gir");
+
+islemler.push({aciklama,tutar,tip,kategori,tarih});
+localStorage.setItem("yg_islemler",JSON.stringify(islemler));
+
+bakiyeyiGuncelle(tutar,tip);
+
+listele();
+grafikCiz();
+}
+
+// LİSTE
+function listele(){
+let alan=document.getElementById("liste");
+alan.innerHTML="";
+
+islemler.slice().reverse().forEach(i=>{
+alan.innerHTML+=`
+<div class="islem" style="border-left:6px solid ${renkler[i.kategori]}">
+<div>
+<b>${i.aciklama}</b><br>
+${i.kategori}<br>
+<small>${i.tarih}</small>
+</div>
+<div>${i.tip=="gelir"?"+":"-"}${i.tutar} ₺</div>
+</div>`;
+});
+}
+
+// GRAFİK
+function grafikCiz(){
+
+let gelir=0,gider=0;
+islemler.forEach(i=>{
+if(i.tip=="gelir") gelir+=i.tutar;
+else gider+=i.tutar;
+});
+
+// ESKİ GRAFİĞİ SİL (ASIL HATA BURADAYDI)
+if(ggChart) ggChart.destroy();
+
+ggChart=new Chart(document.getElementById("gelirGider"),{
+type:"doughnut",
+data:{
+labels:["Gelir","Gider"],
+datasets:[{
+data:[gelir,gider],
+backgroundColor:["#22c55e","#ef4444"]
+}]
+}
+});
+
+// AYLIK
+let aylar={};
+islemler.forEach(i=>{
+let ay=i.tarih.split(".")[1];
+if(!aylar[ay]) aylar[ay]=0;
+if(i.tip=="gelir") aylar[ay]+=i.tutar;
+else aylar[ay]-=i.tutar;
+});
+
+if(ayChart) ayChart.destroy();
+
+ayChart=new Chart(document.getElementById("aylikGrafik"),{
+type:"line",
+data:{
+labels:Object.keys(aylar),
+datasets:[{
+label:"Aylık Değişim",
+data:Object.values(aylar),
+borderColor:"#38bdf8",
+tension:0.3
+}]
+}
+});
+
+}
+
+// BAŞLANGIÇ
+bakiyeGoster();
+listele();
+grafikCiz();
+
+</script>
+
+</body>
+</html>
